@@ -1,3 +1,6 @@
 [submodule "accelerated_features"]
 	path = accelerated_features
 	url = https://github.com/verlab/accelerated_features.git
+[submodule "module/accelerated_features"]
+	path = module/accelerated_features
+	url = https://github.com/verlab/accelerated_features.git
