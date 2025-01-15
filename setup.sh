@@ -1,8 +1,10 @@
 git submodule init
 git submodule update
-conda create -n xfeat -python=3.10
+conda create -n xfeat python=3.8
 conda activate xfeat
+pip install -r requirements.txt
 pip install -e .
+
 mkdir data
 
 cd accelerated_features 
