@@ -1,9 +1,9 @@
-import accelerated_features.modules.xfeat as xfeat
 import cv2
-import numpy as np
-from scipy.spatial import cKDTree
 import copy
 import time
+import numpy as np
+from scipy.spatial import cKDTree
+import accelerated_features.modules.xfeat as xfeat
 
 class XFeatWrapper():
     
@@ -117,9 +117,9 @@ class XFeatWrapper():
         return idx_ret
 
     def unify_features(self, features1, features2, homography):
-
-        keypoints1  = copy.deepcopy(np.array(features1["keypoints"]))
-        keypoints2 = copy.deepcopy(np.array(features2["keypoints"]))
+        
+        keypoints1  = copy.deepcopy(features1["keypoints"].cpu().numpy())
+        keypoints2 = copy.deepcopy(features2["keypoints"].cpu().numpy())
 
         # Converti i punti in coordinate omogenee (aggiungi 1 come terzo elemento)
         homogeneous_points = np.hstack([keypoints1, np.ones((keypoints1.shape[0], 1))])
@@ -152,7 +152,7 @@ class XFeatWrapper():
         
         for trasformation in trasformations:
 
-            homography = self.get_homography(trasformation, image1)
+            homography = self.get_homography(trasformation, image)
 
             image_transformed = self.get_image_trasformed(image, homography)
 
@@ -172,17 +172,16 @@ class XFeatWrapper():
         '''
 
         # Supponendo che transformed_points e keypoints2 siano già definiti
-        start_time = time.time()
+        # start_time = time.time()
 
         features_image1 = self.detect_trasformated_feature(image1, trasformations)
 
-        end_time = time.time()
+        # end_time = time.time()
 
         # Calcola il tempo trascorso
-        execution_time = end_time - start_time
-        print(f"Tempo di esecuzione: {execution_time:.6f} secondi")
+        # execution_time = end_time - start_time
+        # print(f"Tempo di esecuzione: {execution_time:.6f} secondi")
         
-        features_image1 = self.detect_feature(image1)
         features_image2 = self.detect_feature(image2)
 
         kpts1, descs1 = features_image1['keypoints'], features_image1['descriptors']
@@ -195,6 +194,27 @@ class XFeatWrapper():
         points2 = kpts2[idx1].cpu().numpy()
 
         return points1, points2
+    
+    def match_evaluation(self, img1, img2, top_k = None, nmin_cossim = -1, trasformations= None):
+
+        features_image1 = self.detect_trasformated_feature(img1, trasformations)
+        features_image2 = self.detect_trasformated_feature(img2, trasformations)
+        # end_time = time.time()
+
+        # Calcola il tempo trascorso
+        # execution_time = end_time - start_time
+        # print(f"Tempo di esecuzione: {execution_time:.6f} secondi")
+        
+        # features_image1 = self.detect_feature(image1)
+        # features_image2 = self.detect_feature(image2)
+
+        kpts1, descs1 = features_image1['keypoints'], features_image1['descriptors']
+        kpts2, descs2 = features_image2['keypoints'], features_image2['descriptors']
+
+
+        idx0, idx1 = self.xfeat_instance.match(descs1, descs2, min_cossim=nmin_cossim)
+
+        return features_image1['keypoints'][idx0].cpu().numpy(), features_image2['keypoints'][idx1].cpu().numpy()
 
 
 
