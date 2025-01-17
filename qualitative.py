@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import cv2
 import os
 import numpy as np
-import matplotlib.pyplot as plt
+
 
 def visualize_comparisons(image1, image2, p1, p2, original_p1, original_p2):
     """
@@ -150,6 +150,6 @@ if __name__ == "__main__":
             print(path_image2)
             image2 = cv2.imread(path_image2)
             p1, p2 = xfeat_instance.inference_xfeat_our_version(image1, image2, trasformation)
-            p1o, p2o = xfeat_instance.inference_xfeat_star_original(image1, image2)
-            visualize_comparisons(image1, image2, p1, p2, p1o, p2o)
-    #visualize_correspondences(image1, image2, p1o, p2o)
+            # p1o, p2o = xfeat_instance.inference_xfeat_star_original(image1, image2)
+            # visualize_comparisons(image1, image2, p1, p2, p1o, p2o)
+            visualize_correspondences(image1, image2, p1, p2)

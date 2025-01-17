@@ -8,8 +8,9 @@ import accelerated_features.modules.xfeat as xfeat
 
 
 class XFeatWrapper():
-    
-    def __init__(self, device = "cpu", top_k = 4096, min_cossim = 0.82):
+
+
+    def __init__(self, device = "cpu", top_k = 4096, min_cossim = -1):
         self.device = device
         self.xfeat_instance = xfeat.XFeat()
         self.top_k = top_k
@@ -215,7 +216,7 @@ class XFeatWrapper():
             homogeneous_points = np.hstack([keypoints1, np.ones((keypoints1.shape[0], 1))])
             transformed_points = (homography @ homogeneous_points.T).T
             transformed_points /= transformed_points[:, 2][:, np.newaxis] 
-            idx_selected = self.find_similar_points(transformed_points, keypoints2, threshold=5, merge=merge)
+            idx_selected = self.filter_points(transformed_points, keypoints2, threshold=5, merge=merge)
 
             keypoints_selected= features1["keypoints"][idx_selected]
             scores_selected= features1["scores"][idx_selected]
@@ -225,7 +226,7 @@ class XFeatWrapper():
             homogeneous_points = np.hstack([keypoints2, np.ones((keypoints2.shape[0], 1))])
             transformed_points = (homography @ homogeneous_points.T).T
             transformed_points /= transformed_points[:, 2][:, np.newaxis] 
-            idx_selected = self.find_similar_points(transformed_points, keypoints1, threshold=5, merge=merge)
+            idx_selected = self.filter_points(transformed_points, keypoints1, threshold=5, merge=merge)
 
             keypoints_selected = features1["keypoints"].tolist()  # Convert tensor to list
             scores_selected = features1["scores"].tolist()
@@ -292,8 +293,8 @@ class XFeatWrapper():
                 points2 -> np.ndarray (N, 2): points of the second image
         '''
     
-        features_image1 = self.trasformed_detection_features(image1, trasformations)
-        features_image2 = self.trasformed_detection_features(image2, trasformations)
+        features_image1 = self.trasformed_detection_features(image1, trasformations, merge=True)
+        features_image2 = self.trasformed_detection_features(image2, trasformations, merge=True)
 
         kpts1, descs1 = features_image1['keypoints'], features_image1['descriptors']
         kpts2, descs2 = features_image2['keypoints'], features_image2['descriptors']
