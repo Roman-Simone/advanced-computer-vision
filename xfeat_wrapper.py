@@ -1,28 +1,61 @@
 import cv2
 import copy
 import time
+import torch
 import numpy as np
 from scipy.spatial import cKDTree
 import accelerated_features.modules.xfeat as xfeat
 
+
 class XFeatWrapper():
     
-    def __init__(self, device = "cuda"):
+    def __init__(self, device = "cpu", top_k = 4096, min_cossim = 0.82):
         self.device = device
         self.xfeat_instance = xfeat.XFeat()
+        self.top_k = top_k
+        self.min_cossim = min_cossim
 
-    def detect_feature(self, image):
-        '''return:
+
+    def detect_feature_sparse(self, image, top_k = None):
+        '''
+        Detects keypoints, descriptors and reliability map for sparse matching (XFeat).
+        input: 
+            image -> np.ndarray (H,W,C): grayscale or rgb image
+        return:
             Dict: 
                 'keypoints'    ->   torch.Tensor(N, 2): keypoints (x,y)
                 'scores'       ->   torch.Tensor(N): keypoint scores
                 'descriptors'  ->   torch.Tensor(N, 64): local features
         '''
-        output = self.xfeat_instance.detectAndCompute(image, top_k = 4096)
+        if top_k is None:
+            top_k = self.top_k
+
+        output = self.xfeat_instance.detectAndCompute(image, top_k)
         return output[0]
 
 
-    def inference_xfeat_star_original(self, image1, image2):
+    def detect_feature_dense(self, imset, top_k = None):
+        '''
+        Detects keypoints, descriptors and reliability map for semi-dense matching (XFeat Star).
+        It works in batched mode because it use different scales of the image.
+        input: 
+            imset -> torch.Tensor(B, C, H, W): grayscale or rgb image
+        return:
+            Dict: 
+                'keypoints'    ->   torch.Tensor(N, 2): keypoints (x,y)
+                'scores'       ->   torch.Tensor(N): keypoint scores
+                'descriptors'  ->   torch.Tensor(N, 64): local features
+        '''
+
+        if top_k is None: top_k = self.top_k
+
+        image = self.parse_input(image)
+
+        output = self.xfeat_instance.detectAndComputeDense(imset, top_k = top_k)
+        return output[0]
+
+
+    def match_xfeat_star_original(self, imset1, imset2, top_k = None):
         """
 			Extracts coarse feats, then match pairs and finally refine matches, currently supports batched mode.
 			input:
@@ -32,10 +65,17 @@ class XFeatWrapper():
 			returns:
 				matches -> List[torch.Tensor(N, 4)]: List of size B containing tensor of pairwise matches (x1,y1,x2,y2)
 		"""
+
+        if top_k is None: top_k = self.top_k
+
+        imset1 = self.parse_input(image1)
+        imset2 = self.parse_input(image2)
+
+
         return self.xfeat_instance.match_xfeat_star(image1, image2)
 
 
-    def inference_xfeat_original(self, image1, image2):
+    def match_xfeat_original(self, image1, image2, top_k = None):
         """
 			Simple extractor and MNN matcher.
 			For simplicity it does not support batched mode due to possibly different number of kpts.
@@ -46,10 +86,43 @@ class XFeatWrapper():
 			returns:
 				mkpts_0, mkpts_1 -> np.ndarray (N,2) xy coordinate matches from image1 to image2
 		""" 
+
+        if top_k is None: top_k = self.top_k
+        image1 = self.parse_input(image1)
+        image2 = self.parse_input(image2)
+
         return self.xfeat_instance.match_xfeat(image1, image2)
 
 
+    def parse_input(self, x):
+        '''
+            Parse the input to the correct format
+            return:
+                x -> torch.Tensor (B, C, H, W)
+        '''
+        if len(x.shape) == 3:
+            x = x[None, ...]
+
+        if isinstance(x, np.ndarray):
+            x = torch.tensor(x).permute(0,3,1,2)/255
+
+        return x
+
+
+# FIRST IDEA: UNIFY FEATURES WITH HOMOGRAPHY
+############################################################################################################
     def get_homography(self, type_transformation, image):
+        '''
+            Create the homography matrix for the trasformation given in input
+            input:
+                type_transformation -> Dict: 
+                    'type': rotation - traslation
+                    'angle': grades
+                    'pixel': traslation pixels number
+                image -> np.ndarray (H,W,C): grayscale or rgb image
+            return:
+                homography_matrix -> np.ndarray (3,3): homography matrix
+        '''
         
         homography_matrix = None
 
@@ -79,73 +152,113 @@ class XFeatWrapper():
             return type_transformation
 
         return homography_matrix
-    
+
+
     def get_image_trasformed(self, image, homography_matrix):
+        '''
+            Apply the homography matrix to the image
+            input:
+                image -> np.ndarray (H,W,C): grayscale or rgb image
+                homography_matrix -> np.ndarray (3,3): homography matrix
+            return:
+                trasformed_image -> np.ndarray (H,W,C): grayscale or rgb image
+            '''
+
         (h, w) = image.shape[:2]
-        rotated_image = cv2.warpPerspective(image, homography_matrix, (w, h))
-        return rotated_image
+        trasformed_image = cv2.warpPerspective(image, homography_matrix, (w, h))
+        return trasformed_image
 
-    def check_similarity(self, coord1, coord2, threshold = 5):
-        x1, y1 = coord1
-        x2, y2 = coord2
 
-        return abs(x1 - x2) < threshold and abs(y1 - y2) < threshold
-
-    def find_similar_points(self, transformed_points, keypoints2, threshold=5):
-        """
-        Trova gli indici dei punti trasformati simili ai punti in keypoints2.
+    def filter_points(self, transformed_points, keypoints, threshold=5, merge=False):
+        '''
+            Filter or unify the points that are near to each other
+            input:
+                transformed_points -> np.ndarray (N, 2): points trasformed by the homography matrix
+                keypoints -> np.ndarray (N, 2): points original to compare
+                threshold -> int: distance threshold
+                merge -> bool: if True intersect the points, if False unify the points
         
-        Args:
-            transformed_points (np.ndarray): Punti trasformati, dimensione (n, 2).
-            keypoints2 (list): Lista di tuple (x, y) dei keypoint.
-            threshold (float): Distanza massima per considerare due punti simili.
-        
-        Returns:
-            list: Indici dei punti in transformed_points simili a quelli in keypoints2.
-        """
-        # Costruisci un k-d tree per i keypoints di riferimento
-        tree = cKDTree(keypoints2)
+        '''
 
-        # Trova i punti vicini per ogni punto trasformato
+        tree = cKDTree(keypoints)
+
         idx_ret = []
         for idx, coord in enumerate(transformed_points[:, :2]):
-            # Trova i vicini entro il raggio definito dal threshold
             distances, indices = tree.query(coord, k=1, distance_upper_bound=threshold)
-            if distances < threshold:  # Se il vicino più vicino è valido
-                idx_ret.append(idx)
+            if merge:
+                if distances < threshold:
+                    idx_ret.append(idx)
+            else:   
+                if distances > threshold:
+                    idx_ret.append(idx)
         
         return idx_ret
 
-    def unify_features(self, features1, features2, homography):
+
+    def unify_features(self, features1, features2, homography, merge=False):
+        '''
+            Unify the features of two images (one original and one with homography trasformation)
+            input:
+                features1 -> Dict:{keypoints, scores, descriptors}
+                features2 -> Dict:{keypoints, scores, descriptors}
+                homography -> np.ndarray (3,3): homography matrix
+                merge -> bool: if True intersect the points, if False unify the points
+            return:
+                Dict:{keypoints, scores, descriptors}
+        '''
         
         keypoints1  = copy.deepcopy(features1["keypoints"].cpu().numpy())
         keypoints2 = copy.deepcopy(features2["keypoints"].cpu().numpy())
 
-        # Converti i punti in coordinate omogenee (aggiungi 1 come terzo elemento)
-        homogeneous_points = np.hstack([keypoints1, np.ones((keypoints1.shape[0], 1))])
+        if merge == True:
 
-        # Applica la matrice di omografia ai punti
-        transformed_points = (homography @ homogeneous_points.T).T
+            homogeneous_points = np.hstack([keypoints1, np.ones((keypoints1.shape[0], 1))])
+            transformed_points = (homography @ homogeneous_points.T).T
+            transformed_points /= transformed_points[:, 2][:, np.newaxis] 
+            idx_selected = self.find_similar_points(transformed_points, keypoints2, threshold=5, merge=merge)
 
-        transformed_points /= transformed_points[:, 2][:, np.newaxis]  # Dividi per il terzo elemento
+            keypoints_selected= features1["keypoints"][idx_selected]
+            scores_selected= features1["scores"][idx_selected]
+            descriptors_selected= features1["descriptors"][idx_selected]
 
+        else:
+            homogeneous_points = np.hstack([keypoints2, np.ones((keypoints2.shape[0], 1))])
+            transformed_points = (homography @ homogeneous_points.T).T
+            transformed_points /= transformed_points[:, 2][:, np.newaxis] 
+            idx_selected = self.find_similar_points(transformed_points, keypoints1, threshold=5, merge=merge)
 
-        # Chiama la funzione
-        idx_selected = self.find_similar_points(transformed_points, keypoints2, threshold=5)
-      
-        keypoints_selected= features1["keypoints"][idx_selected]
-        scores_selected= features1["scores"][idx_selected]
-        descriptors_selected= features1["descriptors"][idx_selected]
+            keypoints_selected = features1["keypoints"].tolist()  # Convert tensor to list
+            scores_selected = features1["scores"].tolist()
+            descriptors_selected = features1["descriptors"].tolist()
+
+            for index in idx_selected:
+                keypoints_selected.append(features2["keypoints"][index].tolist())
+                scores_selected.append(features2["scores"][index].item())  # Convert scalar tensor to Python scalar
+                descriptors_selected.append(features2["descriptors"][index].tolist())
+
+            keypoints_selected = torch.tensor(keypoints_selected)
+            scores_selected = torch.tensor(scores_selected)
+            descriptors_selected = torch.tensor(descriptors_selected)
 
         return {"keypoints": keypoints_selected, 
                 "scores": scores_selected, 
                 "descriptors": descriptors_selected}
 
 
-    
-    def detect_trasformated_feature(self, image, trasformations):
+    def trasformed_detection_features(self, image, trasformations, merge=False):
+        '''
+            Take an image and apply the trasformations given in input and detect the features unifying or intersecting them
+            input:
+                image -> np.ndarray (H,W,C): grayscale or rgb image
+                trasformations -> List[Dict]:
+                    'type': rotation - traslation
+                    'angle': grades
+                    'pixel': traslation pixels number
+            return:
+                Dict:{keypoints, scores, descriptors}
 
-        features_original = self.detect_feature(image)
+        '''
+        features_original = self.detect_feature_sparse(image)
 
         features_filtered = copy.deepcopy(features_original)
 
@@ -156,68 +269,44 @@ class XFeatWrapper():
 
             image_transformed = self.get_image_trasformed(image, homography)
 
-            features_trasformed= self.detect_feature(image_transformed)
+            features_trasformed= self.detect_feature_sparse(image_transformed)
 
-            features_filtered = self.unify_features(features_filtered, features_trasformed, homography)
+            features_filtered = self.unify_features(features_filtered, features_trasformed, homography, merge=merge)
         
         return features_filtered
+
+
+    def inference_xfeat_our_version(self, image1, image2, trasformations, min_cossim = None):
+        '''
+            Inference of the xfeat algorithm with our version of the trasformation and the match
+            input:
+                image1 -> np.ndarray (H,W,C): grayscale or rgb image
+                image2 -> np.ndarray (H,W,C): grayscale or rgb image
+                trasformations -> List[Dict]:
+                    'type': rotation - traslation
+                    'angle': grades
+                    'pixel': traslation pixels number
+                min_cossim -> float: minimum cosine similarity to consider a match
+            return:
+                points1 -> np.ndarray (N, 2): points of the first image
+                points2 -> np.ndarray (N, 2): points of the second image
+        '''
     
-        
-    def inference_xfeat_our_version(self, image1, image2, trasformations):
-        '''
-            Dict: 
-                'type': rotation - traslation
-                'angle': grades
-                'pixel': traslation pixels number
-        '''
-
-        # Supponendo che transformed_points e keypoints2 siano già definiti
-        # start_time = time.time()
-
-        features_image1 = self.detect_trasformated_feature(image1, trasformations)
-
-        # end_time = time.time()
-
-        # Calcola il tempo trascorso
-        # execution_time = end_time - start_time
-        # print(f"Tempo di esecuzione: {execution_time:.6f} secondi")
-        
-        features_image2 = self.detect_feature(image2)
+        features_image1 = self.trasformed_detection_features(image1, trasformations)
+        features_image2 = self.trasformed_detection_features(image2, trasformations)
 
         kpts1, descs1 = features_image1['keypoints'], features_image1['descriptors']
         kpts2, descs2 = features_image2['keypoints'], features_image2['descriptors']
 
+        if min_cossim is None: min_cossim = self.min_cossim
 
-        idx0, idx1 = self.xfeat_instance.match(descs1, descs2, -1)
+        idx0, idx1 = self.xfeat_instance.match(descs1, descs2, min_cossim=min_cossim)
 
         points1 = kpts1[idx0].cpu().numpy()
         points2 = kpts2[idx1].cpu().numpy()
 
         return points1, points2
-    
-    def match_evaluation(self, img1, img2, top_k = None, nmin_cossim = -1, trasformations= None):
-
-        features_image1 = self.detect_trasformated_feature(img1, trasformations)
-        features_image2 = self.detect_trasformated_feature(img2, trasformations)
-        # end_time = time.time()
-
-        # Calcola il tempo trascorso
-        # execution_time = end_time - start_time
-        # print(f"Tempo di esecuzione: {execution_time:.6f} secondi")
-        
-        # features_image1 = self.detect_feature(image1)
-        # features_image2 = self.detect_feature(image2)
-
-        kpts1, descs1 = features_image1['keypoints'], features_image1['descriptors']
-        kpts2, descs2 = features_image2['keypoints'], features_image2['descriptors']
-
-
-        idx0, idx1 = self.xfeat_instance.match(descs1, descs2, min_cossim=nmin_cossim)
-
-        return features_image1['keypoints'][idx0].cpu().numpy(), features_image2['keypoints'][idx1].cpu().numpy()
-
-
-
+############################################################################################################
 
 
 '''

@@ -1,0 +1,47 @@
+Idee: constraint geometrico, 
+Idea 2: 
+ ⁃ Inizialmente viene calcolata l’homography basata sui punti di corrispondenza estratti da xfeat e gli stessi punti vengono filtrati se le corrispondenze non rispettano l’homography “media” trova
+ ⁃ Ad ogni step viene aggiornata l’homography precedente in modo tale da avere un refinement migliore.
+ ⁃ H2_Finale = A*H2_MEDIA + B*H1_FINALE
+ ⁃ H2 = filtro(p_step_1, H1) -> filtro(p_step_2, H2) = H3
+Idea2.5: trovare i migliori punti nel video che hanno dei match vicini ai match precedenti e utilizzare questi punti per calcolare un omografia più accurata 
+Idee: 
+ ⁃ filtraggio basato sul rapporto di Lowe
+ ⁃ DBScan
+ •  ⁃ Uso la fundamental matrix oppure usiamo K e quindi l’essential matrix
+
+
+
+ToDo:
+1 - Fare la versione wrapper di xfeat* / sistemare codice bene
+
+2 - Iterative refinement homography estimation (IRHE)
+    - Implementation ❌
+    - Qualitative ❌
+    - Evaluation ❌
+
+    Calcoliamo i punti -> Pts-1
+    Calcoliamo homography con Pts-1-> H-1
+    Usiamo H1 per selezionare i punti salvati -> Pts-2
+    Calcoliamo homography con Pts-2 -> H-2
+    a capo 4 iterazioni Pts-4 
+
+    Results: 
+
+3 - Iterative refinement fundamental estimation (IRHE)
+    - Implementation ❌
+    - Qualitative ❌
+    - Evaluation ❌
+
+    Calcoliamo i punti -> Pts-1
+    Calcoliamo fundamental con Pts-1-> H-1
+    Usiamo H1 per selezionare i punti salvati -> Pts-2
+    Calcoliamo homography con Pts-2 -> H-2
+    a capo 4 iterazioni Pts-4 
+
+    Results: 
+
+4 - Rapporto di Lowe
+    https://stackoverflow.com/questions/51197091/how-does-the-lowes-ratio-test-work
+
+5 - DBscan
