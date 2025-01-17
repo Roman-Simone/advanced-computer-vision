@@ -241,18 +241,8 @@ if __name__ == "__main__":
             'type': "rotation",
             'angle': 45,
             'pixel': 0
-        },
-        {
-            'type': "rotation",
-            'angle': 90,
-            'pixel': 0
-        },
-        {
-            'type': "rotation",
-            'angle': 180,
-            'pixel': 0
         }
     ]
 
     xfeat = XFeatWrapper()
-    run_pose_benchmark(matcher_fn = xfeat.match_evaluation, loader = loader, ransac_thr = 2.5, trasformation=trasformation)
+    run_pose_benchmark(matcher_fn = xfeat.inference_xfeat_star_our_version, loader = loader, ransac_thr = 2.5, trasformation=trasformation)

@@ -1,10 +1,10 @@
 import cv2
 import copy
-import time
 import torch
 import numpy as np
 from scipy.spatial import cKDTree
 import accelerated_features.modules.xfeat as xfeat
+import torch.nn.functional as F
 
 
 class XFeatWrapper():
@@ -35,7 +35,7 @@ class XFeatWrapper():
         return output[0]
 
 
-    def detect_feature_dense(self, imset, top_k = None):
+    def detect_feature_dense(self, imset, top_k = None, multiscale = True):
         '''
         Detects keypoints, descriptors and reliability map for semi-dense matching (XFeat Star).
         It works in batched mode because it use different scales of the image.
@@ -50,10 +50,18 @@ class XFeatWrapper():
 
         if top_k is None: top_k = self.top_k
 
-        image = self.parse_input(image)
+        imset = self.parse_input(imset)
 
-        output = self.xfeat_instance.detectAndComputeDense(imset, top_k = top_k)
-        return output[0]
+        output = self.xfeat_instance.detectAndComputeDense(imset, top_k = top_k, multiscale=multiscale)
+        
+        output_ret = {}
+        for key in output.keys():
+            if key == "scales":
+                output_ret["scores"] = output[key].squeeze(0)
+            else:
+                output_ret[key] = output[key].squeeze(0)
+
+        return output_ret
 
 
     def match_xfeat_star_original(self, imset1, imset2, top_k = None):
@@ -69,11 +77,11 @@ class XFeatWrapper():
 
         if top_k is None: top_k = self.top_k
 
-        imset1 = self.parse_input(image1)
-        imset2 = self.parse_input(image2)
+        imset1 = self.parse_input(imset1)
+        imset2 = self.parse_input(imset2)
 
 
-        return self.xfeat_instance.match_xfeat_star(image1, image2)
+        return self.xfeat_instance.match_xfeat_star(imset1, imset2)
 
 
     def match_xfeat_original(self, image1, image2, top_k = None):
@@ -93,7 +101,7 @@ class XFeatWrapper():
         image2 = self.parse_input(image2)
 
         return self.xfeat_instance.match_xfeat(image1, image2)
-
+    
 
     def parse_input(self, x):
         '''
@@ -164,9 +172,9 @@ class XFeatWrapper():
             return:
                 trasformed_image -> np.ndarray (H,W,C): grayscale or rgb image
             '''
-
+        trasformed_image = copy.deepcopy(image)
         (h, w) = image.shape[:2]
-        trasformed_image = cv2.warpPerspective(image, homography_matrix, (w, h))
+        trasformed_image = cv2.warpPerspective(trasformed_image, homography_matrix, (w, h))
         return trasformed_image
 
 
@@ -180,6 +188,9 @@ class XFeatWrapper():
                 merge -> bool: if True intersect the points, if False unify the points
         
         '''
+
+        if len(keypoints.shape) == 3:
+            keypoints = keypoints.squeeze(0)
 
         tree = cKDTree(keypoints)
 
@@ -217,6 +228,7 @@ class XFeatWrapper():
             transformed_points = (homography @ homogeneous_points.T).T
             transformed_points /= transformed_points[:, 2][:, np.newaxis] 
             idx_selected = self.filter_points(transformed_points, keypoints2, threshold=5, merge=merge)
+            
 
             keypoints_selected= features1["keypoints"][idx_selected]
             scores_selected= features1["scores"][idx_selected]
@@ -244,6 +256,9 @@ class XFeatWrapper():
         return {"keypoints": keypoints_selected, 
                 "scores": scores_selected, 
                 "descriptors": descriptors_selected}
+        
+        
+        
 
 
     def trasformed_detection_features(self, image, trasformations, merge=False):
@@ -307,6 +322,65 @@ class XFeatWrapper():
         points2 = kpts2[idx1].cpu().numpy()
 
         return points1, points2
+
+
+    def trasformed_detection_features_dense(self, imset, trasformations, merge=True, top_k = None, multiscale = True):
+        if top_k is None: top_k = self.top_k
+
+
+        features_original = self.detect_feature_dense(imset, top_k, multiscale)
+
+        features_filtered = copy.deepcopy(features_original)
+
+        
+        for trasformation in trasformations:
+
+            image = copy.deepcopy(imset)
+
+            image = image.permute(0,2,3,1).squeeze(0).cpu().numpy()
+
+            homography = self.get_homography(trasformation, image)
+
+            image_transformed = self.get_image_trasformed(image, homography)
+
+            features_trasformed= self.detect_feature_dense(image_transformed, top_k, multiscale)
+
+            features_filtered = self.unify_features(features_filtered, features_trasformed, homography, merge=merge)
+        
+        return features_filtered
+
+
+    def inference_xfeat_star_our_version(self, imset1, imset2, trasformations, top_k = None):
+
+        if top_k == None: top_k = self.top_k
+        imset1 = self.parse_input(imset1)
+        imset2 = self.parse_input(imset2)
+
+        feature_images1 = self.trasformed_detection_features_dense(imset1, trasformations, merge=True, top_k=top_k, multiscale = True)
+        feature_images2 = self.trasformed_detection_features_dense(imset2, trasformations, merge=True, top_k=top_k, multiscale = True)
+
+        feat1 = {}
+        feat2 = {}
+        for key in feature_images1:
+            if key == "scores":
+                feat1["scales"] = feature_images1[key].unsqueeze(0)
+                feat2["scales"] = feature_images2[key].unsqueeze(0)
+            feat1[key] = feature_images1[key].unsqueeze(0)
+            feat2[key] = feature_images2[key].unsqueeze(0)
+
+        #Match batches of pairs
+        idxs_list = self.xfeat_instance.batch_match(feat1['descriptors'], feat2['descriptors'] )
+        B = len(imset1)
+
+        #Refine coarse matches
+        #this part is harder to batch, currently iterate
+        matches = []
+        for b in range(B):
+            matches.append(self.xfeat_instance.refine_matches(feat1, feat2, matches = idxs_list, batch_idx=b))
+
+        return matches if B > 1 else (matches[0][:, :2].cpu().detach().numpy(), matches[0][:, 2:].cpu().detach().numpy())
+
+
 ############################################################################################################
 
 
