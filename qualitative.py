@@ -149,7 +149,8 @@ if __name__ == "__main__":
             path_image2 = os.path.join(root, name)
             print(path_image2)
             image2 = cv2.imread(path_image2)
-            p1, p2 = xfeat_instance.inference_xfeat_star_our_version(image1, image2, trasformation, top_k=4092)
+            #p1, p2 = xfeat_instance.inference_xfeat_star_our_version(image1, image2, trasformation, top_k=4092)
+            p1, p2 = xfeat_instance.iterative_refinement_homography_estimation(imset1=image1, imset2=image2, top_k=10000)
             p1o, p2o = xfeat_instance.match_xfeat_star_original(image1, image2)
             
             print(len(p1), len(p1o))

@@ -1,0 +1,5 @@
+fundamental, threshold=30, iteration=1 auc@5 :  49.5, auc@10 :  65.5, auc@20 :  77.7, mAcc@5: 74.1, mAcc@10: 85.8, mAcc@20: 92.5 
+fundamental, threshold=50, iteration=1 auc@5 :  50.2, auc@10 :  66.0, auc@20 :  77.9, mAcc@5: 74.8, mAcc@10: 86.1, mAcc@20: 92.3 
+fundamental, threshold=90, iteration=1 auc@5 :  50.6, auc@10 :  66.2, auc@20 :  78.1, mAcc@5: 74.5, mAcc@10: 86.1, mAcc@20: 92.4 
+fundamental, threshold=120,iteration=1 auc@5 :  51.1, auc@10 :  66.4, auc@20 :  78.1, mAcc@5: 74.7, mAcc@10: 86.4, mAcc@20: 92.1 
+fundamental, threshold=90, iteration=3 auc@5 :  50.7, auc@10 :  66.4, auc@20 :  78.0, mAcc@5: 74.9, mAcc@10: 86.0, mAcc@20: 91.9

@@ -81,7 +81,7 @@ class XFeatWrapper():
         imset2 = self.parse_input(imset2)
 
 
-        return self.xfeat_instance.match_xfeat_star(imset1, imset2)
+        return self.xfeat_instance.match_xfeat_star(imset1, imset2, top_k=top_k)
 
 
     def match_xfeat_original(self, image1, image2, top_k = None):
@@ -380,7 +380,45 @@ class XFeatWrapper():
 
         return matches if B > 1 else (matches[0][:, :2].cpu().detach().numpy(), matches[0][:, 2:].cpu().detach().numpy())
 
+    def iterative_refinement_homography_estimation(self, imset1, imset2, top_k=None, threshold= 90, iterations=3):
+        raw_pts1, raw_pts2 = self.match_xfeat_star_original(imset1, imset2, top_k)
 
+        for i in range(iterations):
+            refined_pts1, refined_pts2 = self.filter_by_Homography(raw_pts1, raw_pts2, threshold=threshold)
+            #print(f"Iteration {i+1}: {len(refined_pts1)} matches")
+            raw_pts1, raw_pts2 = refined_pts1, refined_pts2  # Update the raw points for the next iteration
+
+        return refined_pts1, refined_pts2
+
+    def iterative_refinement_fundamental_estimation(self, imset1, imset2, top_k=None, threshold= 120, iterations=1):
+        raw_pts1, raw_pts2 = self.match_xfeat_star_original(imset1, imset2, top_k)
+
+        for i in range(iterations):
+            refined_pts1, refined_pts2 = self.filter_by_Fundamental(raw_pts1, raw_pts2, threshold=threshold)
+            #print(f"Iteration {i+1}: {len(refined_pts1)} matches")
+            raw_pts1, raw_pts2 = refined_pts1, refined_pts2  # Update the raw points for the next iteration
+
+        return refined_pts1, refined_pts2
+
+    def filter_by_Fundamental(self, pts1, pts2, threshold):
+
+        F, mask = cv2.findFundamentalMat(pts1, pts2, method=cv2.RANSAC, ransacReprojThreshold=threshold)
+        if mask is None:
+            return pts1, pts2
+        
+        mask = mask.ravel()
+        # Filter matches based on inliers
+        return pts1[mask == 1], pts2[mask == 1]
+    
+    def filter_by_Homography(self, pts1, pts2, threshold):
+
+        H, mask = cv2.findHomography(pts1, pts2, cv2.RANSAC, threshold)
+        if mask is None:
+            return pts1, pts2
+        
+        mask = mask.ravel()
+        # Filter matches based on inliers
+        return pts1[mask == 1], pts2[mask == 1]
 ############################################################################################################
 
 

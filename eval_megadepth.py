@@ -206,7 +206,7 @@ def run_pose_benchmark(matcher_fn, loader, ransac_thr=2.5, trasformation=None):
     cnt = 0
     for d in tqdm.tqdm(loader):
         d_error = {}
-        src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1']), trasformations=trasformation)
+        src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1']), top_k=10000)#trasformations=trasformation)
 
         #delete images to avoid OOM, happens in low mem machines
         del d['image0']
@@ -237,12 +237,12 @@ if __name__ == "__main__":
     from xfeat_wrapper import XFeatWrapper
 
     trasformation= [
-        {
-            'type': "rotation",
-            'angle': 45,
-            'pixel': 0
-        }
+        # {
+        #     'type': "rotation",
+        #     'angle': 45,
+        #     'pixel': 0
+        # }
     ]
 
     xfeat = XFeatWrapper()
-    run_pose_benchmark(matcher_fn = xfeat.inference_xfeat_star_our_version, loader = loader, ransac_thr = 2.5, trasformation=trasformation)
+    run_pose_benchmark(matcher_fn = xfeat.iterative_refinement_fundamental_estimation, loader = loader, ransac_thr = 2.5, trasformation=trasformation)
