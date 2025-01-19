@@ -101,7 +101,7 @@ class XFeatWrapper():
         image1 = self.parse_input(image1)
         image2 = self.parse_input(image2)
 
-        return self.xfeat_instance.match_xfeat(image1, image2)
+        return self.xfeat_instance.match_xfeat(image1, image2, top_k=top_k)
     
 
     def parse_input(self, x):
@@ -379,8 +379,8 @@ class XFeatWrapper():
         return matches if B > 1 else (matches[0][:, :2].cpu().detach().numpy(), matches[0][:, 2:].cpu().detach().numpy())
 
 
-    def iterative_refinement_homography_estimation(self, imset1, imset2, top_k=None, threshold= 90, iterations=3):
-        raw_pts1, raw_pts2 = self.match_xfeat_star_original(imset1, imset2, top_k)
+    def iterative_refinement_homography_estimation(self, imset1, imset2, top_k=None, threshold=90, iterations=1):
+        raw_pts1, raw_pts2 = self.match_xfeat_original(imset1, imset2, top_k)
 
         for i in range(iterations):
             refined_pts1, refined_pts2 = self.filter_by_Homography(raw_pts1, raw_pts2, threshold=threshold)
@@ -390,8 +390,8 @@ class XFeatWrapper():
         return refined_pts1, refined_pts2
 
 
-    def iterative_refinement_fundamental_estimation(self, imset1, imset2, top_k=None, threshold= 120, iterations=1):
-        raw_pts1, raw_pts2 = self.match_xfeat_star_original(imset1, imset2, top_k)
+    def iterative_refinement_fundamental_estimation(self, imset1, imset2, top_k=None, threshold= 90, iterations=1):
+        raw_pts1, raw_pts2 = self.match_xfeat_original(imset1, imset2, top_k)
 
         for i in range(iterations):
             refined_pts1, refined_pts2 = self.filter_by_Fundamental(raw_pts1, raw_pts2, threshold=threshold)
@@ -438,7 +438,7 @@ class XFeatWrapper():
                 Dict:{keypoints, scores, descriptors}
         ''' 
         # Combine keypoints and descriptors for clustering
-        data = features["keypoints"]
+        data = features["keypoints"].cpu()
         data_min = data.min(axis=0).values
         data_max = data.max(axis=0).values
         data = (data - data_min) / (data_max - data_min + 1e-8)  # Add a small epsilon to avoid division by zero
@@ -447,8 +447,10 @@ class XFeatWrapper():
 
         # Get valid indices for clustered points
         valid_indices = np.where(clustering.labels_ != -1)[0]
-        print(len(valid_indices))
-
+        #print(len(valid_indices))
+        if len(valid_indices) == 0:
+            print("No valid indices found")
+            return features
         # Retain only clustered keypoints and descriptors
         return {"keypoints": features["keypoints"][valid_indices], 
                 "scores": features["scores"][valid_indices], 
@@ -456,7 +458,7 @@ class XFeatWrapper():
     
     
     
-    def xfeat_star_clustering(self, imset1, imset2, trasformations, top_k = None):
+    def xfeat_star_clustering(self, imset1, imset2, trasformations, top_k = None, eps=0.006, min_samples=5):
 
         if top_k == None: top_k = self.top_k
         imset1 = self.parse_input(imset1)
@@ -466,8 +468,8 @@ class XFeatWrapper():
         feature_images2 = self.trasformed_detection_features_dense(imset2, trasformations, merge=True, top_k=top_k, multiscale = True)
 
         # apply dbscan to remove outliers
-        filter_features1 = self.filter_with_dbscan(feature_images1)
-        filter_features2 = self.filter_with_dbscan(feature_images2)
+        filter_features1 = self.filter_with_dbscan(feature_images1, eps=eps, min_samples=min_samples)
+        filter_features2 = self.filter_with_dbscan(feature_images2, eps=eps, min_samples=min_samples)
 
         feat1 = {}
         feat2 = {}

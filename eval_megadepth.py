@@ -57,8 +57,11 @@ def relative_pose_error(T_0to1, R, t, ignore_gt_t_thr=0.0):
     # angle error between 2 vectors
     t_gt = T_0to1[:3, 3]
     n = np.linalg.norm(t) * np.linalg.norm(t_gt)
-    t_err = np.rad2deg(np.arccos(np.clip(np.dot(t, t_gt) / n, -1.0, 1.0)))
-    t_err = np.minimum(t_err, 180 - t_err)  # handle E ambiguity
+    if n == 0:
+        t_err = 0
+    else:
+        t_err = np.rad2deg(np.arccos(np.clip(np.dot(t, t_gt) / n, -1.0, 1.0)))
+        t_err = np.minimum(t_err, 180 - t_err)  # handle E ambiguity
     if np.linalg.norm(t_gt) < ignore_gt_t_thr:  # pure rotation is challenging
         t_err = 0
 
@@ -206,12 +209,10 @@ def run_pose_benchmark(matcher_fn, loader, ransac_thr=2.5, trasformation=None):
     cnt = 0
     for d in tqdm.tqdm(loader):
         d_error = {}
-        src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1']), top_k=10000)#trasformations=trasformation)
-
+        src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1']), top_k=10000) #trasformations=trasformation, top_k=10000, eps=0.1, min_samples=5)
         #delete images to avoid OOM, happens in low mem machines
         del d['image0']
         del d['image1']
-
         #rescale kpts
         src_pts = src_pts * d['scale0'].numpy()
         dst_pts = dst_pts * d['scale1'].numpy()
@@ -245,4 +246,4 @@ if __name__ == "__main__":
     ]
 
     xfeat = XFeatWrapper()
-    run_pose_benchmark(matcher_fn = xfeat.iterative_refinement_fundamental_estimation, loader = loader, ransac_thr = 2.5, trasformation=trasformation)
+    run_pose_benchmark(matcher_fn = xfeat.match_xfeat_star_original, loader = loader, ransac_thr = 2.5, trasformation=trasformation)
