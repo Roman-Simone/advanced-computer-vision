@@ -228,7 +228,7 @@ def run_pose_benchmark(matcher_fn, loader, ransac_thr=2.5, trasformation=None):
 
 if __name__ == "__main__":
     
-    dataset = MegaDepth1500( json_file = 'megadepth_1500.json',
+    dataset = MegaDepth1500( json_file = 'data/megadepth_1500.json',
                              root_dir = 'data/Mega1500/megadepth_test_1500')
     
     loader = DataLoader(dataset, batch_size=1, shuffle=False)

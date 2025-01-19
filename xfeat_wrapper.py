@@ -6,10 +6,7 @@ from scipy.spatial import cKDTree
 from sklearn.cluster import DBSCAN
 import accelerated_features.modules.xfeat as xfeat
 
-
-
 class XFeatWrapper():
-
 
     def __init__(self, device = "cpu", top_k = 4096, min_cossim = -1):
         self.device = device
@@ -119,7 +116,7 @@ class XFeatWrapper():
         return x
 
 
-# FIRST IDEA: UNIFY FEATURES WITH HOMOGRAPHY
+# UNIFY FEATURES WITH HOMOGRAPHT TRANSFORMATION
 ############################################################################################################
     def get_homography(self, type_transformation, image):
         '''
@@ -325,7 +322,6 @@ class XFeatWrapper():
     def trasformed_detection_features_dense(self, imset, trasformations, merge=True, top_k = None, multiscale = True):
         if top_k is None: top_k = self.top_k
 
-
         features_original = self.detect_feature_dense(imset, top_k, multiscale)
 
         features_filtered = copy.deepcopy(features_original)
@@ -378,8 +374,21 @@ class XFeatWrapper():
 
         return matches if B > 1 else (matches[0][:, :2].cpu().detach().numpy(), matches[0][:, 2:].cpu().detach().numpy())
 
-
-    def iterative_refinement_homography_estimation(self, imset1, imset2, top_k=None, threshold=90, iterations=1):
+# REFINE FEATURES WITH FUNDAMENTAL AND HOMOGRAPHY
+############################################################################################################
+    def xfeat_homography_refinement(self, imset1, imset2, top_k=None, threshold=90, iterations=1):
+        '''
+            Refine the features with the homography matrix
+            input:
+                imset1 -> torch.Tensor(B, C, H, W) or np.ndarray (H,W,C): grayscale or rgb images.
+                imset2 -> torch.Tensor(B, C, H, W) or np.ndarray (H,W,C): grayscale or rgb images.
+                top_k -> int: keep best k features
+                threshold -> int: distance threshold
+                iterations -> int: number of iteration
+            return:
+                refined_pts1 -> np.ndarray (N, 2): points of the first image
+                refined_pts2 -> np.ndarray (N, 2): points of the second image
+        '''
         raw_pts1, raw_pts2 = self.match_xfeat_original(imset1, imset2, top_k)
 
         for i in range(iterations):
@@ -390,7 +399,19 @@ class XFeatWrapper():
         return refined_pts1, refined_pts2
 
 
-    def iterative_refinement_fundamental_estimation(self, imset1, imset2, top_k=None, threshold= 90, iterations=1):
+    def xfeat_fundamental_refinement(self, imset1, imset2, top_k=None, threshold= 90, iterations=1):
+        '''
+            Refine the features with the fundamental matrix
+            input:
+                imset1 -> torch.Tensor(B, C, H, W) or np.ndarray (H,W,C): grayscale or rgb images.
+                imset2 -> torch.Tensor(B, C, H, W) or np.ndarray (H,W,C): grayscale or rgb images.
+                top_k -> int: keep best k features
+                threshold -> int: distance threshold
+                iterations -> int: number of iteration
+            return:
+                refined_pts1 -> np.ndarray (N, 2): points of the first image
+                refined_pts2 -> np.ndarray (N, 2): points of the second image
+        '''
         raw_pts1, raw_pts2 = self.match_xfeat_original(imset1, imset2, top_k)
 
         for i in range(iterations):
@@ -402,7 +423,16 @@ class XFeatWrapper():
 
 
     def filter_by_Fundamental(self, pts1, pts2, threshold):
-
+        '''
+            Filter the points with the fundamental matrix
+            input:
+                pts1 -> np.ndarray (N, 2): points of the first image
+                pts2 -> np.ndarray (N, 2): points of the second image
+                threshold -> int: distance threshold
+            return:
+                pts1 -> np.ndarray (N, 2): points of the first image
+                pts2 -> np.ndarray (N, 2): points of the second image
+        '''
         F, mask = cv2.findFundamentalMat(pts1, pts2, method=cv2.RANSAC, ransacReprojThreshold=threshold)
         if mask is None:
             return pts1, pts2
@@ -413,7 +443,16 @@ class XFeatWrapper():
 
 
     def filter_by_Homography(self, pts1, pts2, threshold):
-
+        '''
+            Filter the points with the homography matrix
+            input:
+                pts1 -> np.ndarray (N, 2): points of the first image
+                pts2 -> np.ndarray (N, 2): points of the second image
+                threshold -> int: distance threshold
+            return:
+                pts1 -> np.ndarray (N, 2): points of the first image
+                pts2 -> np.ndarray (N, 2): points of the second image
+        '''
         H, mask = cv2.findHomography(pts1, pts2, cv2.RANSAC, threshold)
         if mask is None:
             return pts1, pts2
@@ -422,10 +461,7 @@ class XFeatWrapper():
         # Filter matches based on inliers
         return pts1[mask == 1], pts2[mask == 1]
 
-
-############################################################################################################
-
-#CLUSTERING
+# REFINE FEATURES WITH DBSCAN
 ############################################################################################################
     def filter_with_dbscan(self, features, eps=0.006, min_samples=5):
         '''
@@ -453,30 +489,36 @@ class XFeatWrapper():
             return features
         # Retain only clustered keypoints and descriptors
         return {"keypoints": features["keypoints"][valid_indices], 
-                "scores": features["scores"][valid_indices], 
+                "scales": features["scores"][valid_indices], 
                 "descriptors": features["descriptors"][valid_indices]}
-    
-    
-    
-    def xfeat_star_clustering(self, imset1, imset2, trasformations, top_k = None, eps=0.006, min_samples=5):
+
+
+    def xfeat_star_clustering(self, imset1, imset2, top_k = None, eps=0.006, min_samples=5):
+        '''
+            Match the features of two images with the dbscan algorithm
+            input:
+                imset1 -> torch.Tensor(B, C, H, W) or np.ndarray (H,W,C): grayscale or rgb images.
+                imset2 -> torch.Tensor(B, C, H, W) or np.ndarray (H,W,C): grayscale or rgb images.
+                top_k -> int: keep best k features
+                eps -> float: The maximum distance between two samples for one to be considered as in the neighborhood of the other.
+                min_samples -> int: The number of samples in a neighborhood for a point to be considered as a core point.
+            return:
+                matches -> List[torch.Tensor(N, 4)]: List of size B containing tensor of pairwise matches (x1,y1,x2,y2)
+        '''
 
         if top_k == None: top_k = self.top_k
         imset1 = self.parse_input(imset1)
         imset2 = self.parse_input(imset2)
 
-        feature_images1 = self.trasformed_detection_features_dense(imset1, trasformations, merge=True, top_k=top_k, multiscale = True)
-        feature_images2 = self.trasformed_detection_features_dense(imset2, trasformations, merge=True, top_k=top_k, multiscale = True)
+        feature_images1 = self.detect_feature_dense(imset1, top_k, multiscale = True)
+        feature_images2 = self.detect_feature_dense(imset2, top_k, multiscale = True)
 
-        # apply dbscan to remove outliers
         filter_features1 = self.filter_with_dbscan(feature_images1, eps=eps, min_samples=min_samples)
         filter_features2 = self.filter_with_dbscan(feature_images2, eps=eps, min_samples=min_samples)
 
         feat1 = {}
         feat2 = {}
-        for key in feature_images1:
-            if key == "scores":
-                feat1["scales"] = filter_features1[key].unsqueeze(0)
-                feat2["scales"] = filter_features2[key].unsqueeze(0)
+        for key in filter_features1:
             feat1[key] = filter_features1[key].unsqueeze(0)
             feat2[key] = filter_features2[key].unsqueeze(0)
 
@@ -492,63 +534,4 @@ class XFeatWrapper():
 
         return matches if B > 1 else (matches[0][:, :2].cpu().detach().numpy(), matches[0][:, 2:].cpu().detach().numpy())
 
-
-
-
-
-
-
-
-
-
-
-
-'''
-Image Input -> Trasformation (Rotation, Translataion, known homography) -> Trasfromed Image
-Image Input -> XFeat -> Feature Detection 
-Trasformed Image -> XFeat -> Feature Detection 
-
-Step choose common feature
-
-on retained_feature -> match_feature
-
-
-'''
-
-
-if __name__ == "__main__":
-    path_image1 = "data/Mega1500/megadepth_test_1500/Undistorted_SfM/0015/images/29307281_d7872975e2_o.jpg"
-    path_image2 = "data/Mega1500/megadepth_test_1500/Undistorted_SfM/0015/images/50646217_c352086389_o.jpg"
-    image1 = cv2.imread(path_image1)
-    image2 = cv2.imread(path_image2)
-    trasformation= [
-        {
-            'type': "rotation",
-            'angle': 45,
-            'pixel': 0
-        },
-        {
-            'type': "rotation",
-            'angle': 90,
-            'pixel': 0
-        },
-        {
-            'type': "rotation",
-            'angle': 180,
-            'pixel': 0
-        }
-    ]
-    
-
-    xfeat_instance = XFeatWrapper()
-
-    xfeat_instance.inference_xfeat_our_version(image1, image2, trasformation)
-
-
-
-    # output = xfeat_instance.detect_feature(image1)
-    # pts1, pts2 = xfeat_instance.inference_xfeat_original(image1, image2)
-    # pts1_our, pts2_our = xfeat_instance.inference_xfeat_our_version(image1, image2)
-    # pts1_star, pts2_star = xfeat_instance.inference_xfeat_star_original(image1, image2)
-    # print(pts1)
-    # print()
+############################################################################################################
