@@ -1,4 +1,4 @@
-from xfeat_wrapper import XFeatWrapper
+from xfeat_wrapper_copy import XFeatWrapper
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
@@ -126,21 +126,21 @@ if __name__ == "__main__":
     
 
     trasformation= [
-        {
-            'type': "rotation",
-            'angle': 45,
-            'pixel': 0
-        },
-        {
-            'type': "rotation",
-            'angle': 90,
-            'pixel': 0
-        },
-        {
-            'type': "rotation",
-            'angle': 180,
-            'pixel': 0
-        }
+        # {
+        #     'type': "rotation",
+        #     'angle': 45,
+        #     'pixel': 0
+        # },
+        # {
+        #     'type': "rotation",
+        #     'angle': 90,
+        #     'pixel': 0
+        # },
+        # {
+        #     'type': "rotation",
+        #     'angle': 180,
+        #     'pixel': 0
+        # }
     ]
     path = "data/Mega1500/megadepth_test_1500/Undistorted_SfM/0015/images"
 
@@ -150,10 +150,11 @@ if __name__ == "__main__":
             print(path_image2)
             image2 = cv2.imread(path_image2)
             #p1, p2 = xfeat_instance.inference_xfeat_star_our_version(image1, image2, trasformation, top_k=4092)
-            p1, p2 = xfeat_instance.iterative_refinement_homography_estimation(imset1=image1, imset2=image2, top_k=10000)
+            p1, p2 = xfeat_instance.inference_xfeat_star_our_version(imset1=image1, imset2=image2, trasformations=trasformation, top_k=10000)
             p1o, p2o = xfeat_instance.match_xfeat_star_original(image1, image2)
             
             print(len(p1), len(p1o))
             # p1o, p2o = xfeat_instance.inference_xfeat_star_original(image1, image2)
             visualize_comparisons(image1, image2, p1, p2, p1o, p2o)
+            print()
             #visualize_correspondences(image1, image2, p1, p2)

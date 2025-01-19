@@ -13,12 +13,12 @@ Idee:
 
 
 ToDo:
-1 - Fare la versione wrapper di xfeat* / sistemare codice bene
+1 - Fare la versione wrapper di xfeat* / sistemare codice bene ✅
 
 2 - Iterative refinement homography estimation (IRHE)
-    - Implementation ❌
-    - Qualitative ❌
-    - Evaluation ❌
+    - Implementation ✅
+    - Qualitative ✅
+    - Evaluation ✅
 
     Calcoliamo i punti -> Pts-1
     Calcoliamo homography con Pts-1-> H-1
@@ -29,9 +29,9 @@ ToDo:
     Results: 
 
 3 - Iterative refinement fundamental estimation (IRHE)
-    - Implementation ❌
-    - Qualitative ❌
-    - Evaluation ❌
+    - Implementation ✅
+    - Qualitative ✅
+    - Evaluation ✅
 
     Calcoliamo i punti -> Pts-1
     Calcoliamo fundamental con Pts-1-> H-1
@@ -44,4 +44,4 @@ ToDo:
 4 - Rapporto di Lowe
     https://stackoverflow.com/questions/51197091/how-does-the-lowes-ratio-test-work
 
-5 - DBscan
+5 - DBscan ✅

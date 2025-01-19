@@ -1,7 +1,7 @@
 .DS_STORE
 data
 /tmp
-
+xfeat_wrapper_copy.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

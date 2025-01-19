@@ -3,8 +3,9 @@ import copy
 import torch
 import numpy as np
 from scipy.spatial import cKDTree
+from sklearn.cluster import DBSCAN
 import accelerated_features.modules.xfeat as xfeat
-import torch.nn.functional as F
+
 
 
 class XFeatWrapper():
@@ -256,9 +257,6 @@ class XFeatWrapper():
         return {"keypoints": keypoints_selected, 
                 "scores": scores_selected, 
                 "descriptors": descriptors_selected}
-        
-        
-        
 
 
     def trasformed_detection_features(self, image, trasformations, merge=False):
@@ -380,6 +378,7 @@ class XFeatWrapper():
 
         return matches if B > 1 else (matches[0][:, :2].cpu().detach().numpy(), matches[0][:, 2:].cpu().detach().numpy())
 
+
     def iterative_refinement_homography_estimation(self, imset1, imset2, top_k=None, threshold= 90, iterations=3):
         raw_pts1, raw_pts2 = self.match_xfeat_star_original(imset1, imset2, top_k)
 
@@ -389,6 +388,7 @@ class XFeatWrapper():
             raw_pts1, raw_pts2 = refined_pts1, refined_pts2  # Update the raw points for the next iteration
 
         return refined_pts1, refined_pts2
+
 
     def iterative_refinement_fundamental_estimation(self, imset1, imset2, top_k=None, threshold= 120, iterations=1):
         raw_pts1, raw_pts2 = self.match_xfeat_star_original(imset1, imset2, top_k)
@@ -400,6 +400,7 @@ class XFeatWrapper():
 
         return refined_pts1, refined_pts2
 
+
     def filter_by_Fundamental(self, pts1, pts2, threshold):
 
         F, mask = cv2.findFundamentalMat(pts1, pts2, method=cv2.RANSAC, ransacReprojThreshold=threshold)
@@ -409,7 +410,8 @@ class XFeatWrapper():
         mask = mask.ravel()
         # Filter matches based on inliers
         return pts1[mask == 1], pts2[mask == 1]
-    
+
+
     def filter_by_Homography(self, pts1, pts2, threshold):
 
         H, mask = cv2.findHomography(pts1, pts2, cv2.RANSAC, threshold)
@@ -419,7 +421,84 @@ class XFeatWrapper():
         mask = mask.ravel()
         # Filter matches based on inliers
         return pts1[mask == 1], pts2[mask == 1]
+
+
 ############################################################################################################
+
+#CLUSTERING
+############################################################################################################
+    def filter_with_dbscan(self, features, eps=0.006, min_samples=5):
+        '''
+            Filter the features with the dbscan algorithm
+            input:
+                features -> Dict:{keypoints, scores, descriptors}
+                eps -> float: The maximum distance between two samples for one to be considered as in the neighborhood of the other.
+                min_samples -> int: The number of samples in a neighborhood for a point to be considered as a core point.
+            return:
+                Dict:{keypoints, scores, descriptors}
+        ''' 
+        # Combine keypoints and descriptors for clustering
+        data = features["keypoints"]
+        data_min = data.min(axis=0).values
+        data_max = data.max(axis=0).values
+        data = (data - data_min) / (data_max - data_min + 1e-8)  # Add a small epsilon to avoid division by zero
+
+        clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(data)
+
+        # Get valid indices for clustered points
+        valid_indices = np.where(clustering.labels_ != -1)[0]
+        print(len(valid_indices))
+
+        # Retain only clustered keypoints and descriptors
+        return {"keypoints": features["keypoints"][valid_indices], 
+                "scores": features["scores"][valid_indices], 
+                "descriptors": features["descriptors"][valid_indices]}
+    
+    
+    
+    def xfeat_star_clustering(self, imset1, imset2, trasformations, top_k = None):
+
+        if top_k == None: top_k = self.top_k
+        imset1 = self.parse_input(imset1)
+        imset2 = self.parse_input(imset2)
+
+        feature_images1 = self.trasformed_detection_features_dense(imset1, trasformations, merge=True, top_k=top_k, multiscale = True)
+        feature_images2 = self.trasformed_detection_features_dense(imset2, trasformations, merge=True, top_k=top_k, multiscale = True)
+
+        # apply dbscan to remove outliers
+        filter_features1 = self.filter_with_dbscan(feature_images1)
+        filter_features2 = self.filter_with_dbscan(feature_images2)
+
+        feat1 = {}
+        feat2 = {}
+        for key in feature_images1:
+            if key == "scores":
+                feat1["scales"] = filter_features1[key].unsqueeze(0)
+                feat2["scales"] = filter_features2[key].unsqueeze(0)
+            feat1[key] = filter_features1[key].unsqueeze(0)
+            feat2[key] = filter_features2[key].unsqueeze(0)
+
+        #Match batches of pairs
+        idxs_list = self.xfeat_instance.batch_match(feat1['descriptors'], feat2['descriptors'] )
+        B = len(imset1)
+
+        #Refine coarse matches
+        #this part is harder to batch, currently iterate
+        matches = []
+        for b in range(B):
+            matches.append(self.xfeat_instance.refine_matches(feat1, feat2, matches = idxs_list, batch_idx=b))
+
+        return matches if B > 1 else (matches[0][:, :2].cpu().detach().numpy(), matches[0][:, 2:].cpu().detach().numpy())
+
+
+
+
+
+
+
+
+
+
 
 
 '''
