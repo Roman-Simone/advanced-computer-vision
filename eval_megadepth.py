@@ -188,7 +188,7 @@ def compute_maa(pairs, thresholds=[5, 10, 20]):
     for t in thresholds:
         acc = (errors <= t).sum() / len(errors)
         print("mAcc@%d: %.1f "%(t, acc*100))
-    
+
 
 @torch.inference_mode()
 def run_pose_benchmark(matcher_fn, loader, top_k=4092, ransac_thr=2.5, trasformations=None, min_cossim=0.5, method="homography", threshold=90):
@@ -275,11 +275,11 @@ if __name__ == "__main__":
     print("running benchmarck for XFeat trasformed")
 
     trasformation= [
-        {
-            'type': "rotation",
-            'angle': 45,
-            'pixel': 0
-        },
+        # {
+        #     'type': "rotation",
+        #     'angle': 45,
+        #     'pixel': 0
+        # },
         {
             'type': "rotation",
             'angle': 90,

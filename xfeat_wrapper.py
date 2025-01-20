@@ -287,7 +287,7 @@ class XFeatWrapper():
         return features_filtered
 
 
-    def match_xfeat_trasformed(self, image1, image2, trasformations = {}, top_k=4092, min_cossim = None):
+    def match_xfeat_trasformed(self, image1, image2, trasformations = {}, top_k=4092, min_cossim = None, merge=True):
         '''
             Inference of the xfeat algorithm with our version of the trasformation and the match
             input:
@@ -303,8 +303,8 @@ class XFeatWrapper():
                 points2 -> np.ndarray (N, 2): points of the second image
         '''
     
-        features_image1 = self.trasformed_detection_features(image1, trasformations, merge=True, top_k=top_k)
-        features_image2 = self.trasformed_detection_features(image2, trasformations, merge=True, top_k=top_k)
+        features_image1 = self.trasformed_detection_features(image1, trasformations, merge=merge, top_k=top_k)
+        features_image2 = self.trasformed_detection_features(image2, trasformations, merge=merge, top_k=top_k)
 
         kpts1, descs1 = features_image1['keypoints'], features_image1['descriptors']
         kpts2, descs2 = features_image2['keypoints'], features_image2['descriptors']
