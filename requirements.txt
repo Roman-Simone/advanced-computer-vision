@@ -2,6 +2,7 @@ tqdm
 torch
 gdown
 scipy
+pandas
 poselib
 torchvision
 scikit-learn
