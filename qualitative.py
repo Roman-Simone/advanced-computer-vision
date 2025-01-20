@@ -1,9 +1,8 @@
-from xfeat_wrapper import XFeatWrapper
+import os
+import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-import cv2
-import os
-import numpy as np
+from xfeat_wrapper import XFeatWrapper
 
 
 def visualize_comparisons(image1, image2, p1, p2, original_p1, original_p2):
@@ -112,9 +111,6 @@ if __name__ == "__main__":
     path_image2 :
 
     data/Mega1500/megadepth_test_1500/Undistorted_SfM/0015/images/215038972_b717b9113b_o.jpg
-
-
-
 
     '''
     path_image1 = "data/Mega1500/megadepth_test_1500/Undistorted_SfM/0015/images/2429046426_eddd69687b_o.jpg"

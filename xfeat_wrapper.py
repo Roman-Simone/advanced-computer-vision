@@ -4,7 +4,7 @@ import torch
 import numpy as np
 from scipy.spatial import cKDTree
 from sklearn.cluster import DBSCAN
-import accelerated_features.modules.xfeat as xfeat
+from accelerated_features.modules import xfeat
 
 class XFeatWrapper():
 
@@ -256,7 +256,7 @@ class XFeatWrapper():
                 "descriptors": descriptors_selected}
 
 
-    def trasformed_detection_features(self, image, trasformations, merge=False):
+    def trasformed_detection_features(self, image, trasformations, merge=False, top_k = None):
         '''
             Take an image and apply the trasformations given in input and detect the features unifying or intersecting them
             input:
@@ -269,7 +269,7 @@ class XFeatWrapper():
                 Dict:{keypoints, scores, descriptors}
 
         '''
-        features_original = self.detect_feature_sparse(image)
+        features_original = self.detect_feature_sparse(image, top_k=top_k)
 
         features_filtered = copy.deepcopy(features_original)
 
@@ -280,14 +280,14 @@ class XFeatWrapper():
 
             image_transformed = self.get_image_trasformed(image, homography)
 
-            features_trasformed= self.detect_feature_sparse(image_transformed)
+            features_trasformed= self.detect_feature_sparse(image_transformed, top_k=top_k)
 
             features_filtered = self.unify_features(features_filtered, features_trasformed, homography, merge=merge)
         
         return features_filtered
 
 
-    def inference_xfeat_our_version(self, image1, image2, trasformations, min_cossim = None):
+    def match_xfeat_trasformed(self, image1, image2, trasformations = {}, top_k=4092, min_cossim = None):
         '''
             Inference of the xfeat algorithm with our version of the trasformation and the match
             input:
@@ -303,8 +303,8 @@ class XFeatWrapper():
                 points2 -> np.ndarray (N, 2): points of the second image
         '''
     
-        features_image1 = self.trasformed_detection_features(image1, trasformations, merge=True)
-        features_image2 = self.trasformed_detection_features(image2, trasformations, merge=True)
+        features_image1 = self.trasformed_detection_features(image1, trasformations, merge=True, top_k=top_k)
+        features_image2 = self.trasformed_detection_features(image2, trasformations, merge=True, top_k=top_k)
 
         kpts1, descs1 = features_image1['keypoints'], features_image1['descriptors']
         kpts2, descs2 = features_image2['keypoints'], features_image2['descriptors']
@@ -344,7 +344,7 @@ class XFeatWrapper():
         return features_filtered
 
 
-    def inference_xfeat_star_our_version(self, imset1, imset2, trasformations, top_k = None):
+    def match_xfeat_star_trasformed(self, imset1, imset2, trasformations, top_k = None):
 
         if top_k == None: top_k = self.top_k
         imset1 = self.parse_input(imset1)
@@ -376,7 +376,7 @@ class XFeatWrapper():
 
 # REFINE FEATURES WITH FUNDAMENTAL AND HOMOGRAPHY
 ############################################################################################################
-    def xfeat_homography_refinement(self, imset1, imset2, top_k=None, threshold=90, iterations=1):
+    def match_xfeat_refined(self, imset1, imset2, top_k=None, threshold=90, iterations=1, method="homography"):
         '''
             Refine the features with the homography matrix
             input:
@@ -392,16 +392,19 @@ class XFeatWrapper():
         raw_pts1, raw_pts2 = self.match_xfeat_original(imset1, imset2, top_k)
 
         for i in range(iterations):
-            refined_pts1, refined_pts2 = self.filter_by_Homography(raw_pts1, raw_pts2, threshold=threshold)
+            if method == "homography":
+                refined_pts1, refined_pts2 = self.filter_by_Homography(raw_pts1, raw_pts2, threshold=threshold)
+            elif method == "fundamental":
+                refined_pts1, refined_pts2 = self.filter_by_Fundamental(raw_pts1, raw_pts2, threshold=threshold)
             #print(f"Iteration {i+1}: {len(refined_pts1)} matches")
             raw_pts1, raw_pts2 = refined_pts1, refined_pts2  # Update the raw points for the next iteration
 
         return refined_pts1, refined_pts2
 
 
-    def xfeat_fundamental_refinement(self, imset1, imset2, top_k=None, threshold= 90, iterations=1):
+    def match_xfeat_star_refined(self, imset1, imset2, top_k=None, threshold=90, iterations=1, method="homography"):
         '''
-            Refine the features with the fundamental matrix
+            Refine the features with the homography matrix
             input:
                 imset1 -> torch.Tensor(B, C, H, W) or np.ndarray (H,W,C): grayscale or rgb images.
                 imset2 -> torch.Tensor(B, C, H, W) or np.ndarray (H,W,C): grayscale or rgb images.
@@ -412,10 +415,13 @@ class XFeatWrapper():
                 refined_pts1 -> np.ndarray (N, 2): points of the first image
                 refined_pts2 -> np.ndarray (N, 2): points of the second image
         '''
-        raw_pts1, raw_pts2 = self.match_xfeat_original(imset1, imset2, top_k)
+        raw_pts1, raw_pts2 = self.match_xfeat_star_original(imset1, imset2, top_k)
 
         for i in range(iterations):
-            refined_pts1, refined_pts2 = self.filter_by_Fundamental(raw_pts1, raw_pts2, threshold=threshold)
+            if method == "homography":
+                refined_pts1, refined_pts2 = self.filter_by_Homography(raw_pts1, raw_pts2, threshold=threshold)
+            elif method == "fundamental":
+                refined_pts1, refined_pts2 = self.filter_by_Fundamental(raw_pts1, raw_pts2, threshold=threshold)
             #print(f"Iteration {i+1}: {len(refined_pts1)} matches")
             raw_pts1, raw_pts2 = refined_pts1, refined_pts2  # Update the raw points for the next iteration
 
@@ -493,7 +499,7 @@ class XFeatWrapper():
                 "descriptors": features["descriptors"][valid_indices]}
 
 
-    def xfeat_star_clustering(self, imset1, imset2, top_k = None, eps=0.006, min_samples=5):
+    def match_xfeat_star_clustering(self, imset1, imset2, top_k = None, eps=0.006, min_samples=5):
         '''
             Match the features of two images with the dbscan algorithm
             input:

@@ -1,13 +1,15 @@
-import argparse, glob, sys, os, time
-import torch
-from torch.utils.data import Dataset, DataLoader
 import cv2
-import numpy as np
-import poselib
 import json
 import copy
-
 import tqdm
+import torch
+import poselib
+import numpy as np
+import argparse, glob, sys, os, time
+from xfeat_wrapper import XFeatWrapper
+from torch.utils.data import Dataset, DataLoader
+from accelerated_features.third_party import alike_wrapper as alike
+
 
 class MegaDepth1500(Dataset):
     """
@@ -53,6 +55,7 @@ class MegaDepth1500(Dataset):
 
         return data
 
+
 def relative_pose_error(T_0to1, R, t, ignore_gt_t_thr=0.0):
     # angle error between 2 vectors
     t_gt = T_0to1[:3, 3]
@@ -83,6 +86,7 @@ def intrinsics_to_camera(K):
         "height": int(2 * py),
         "params": [fx, fy, px, py],
     }
+
 
 def estimate_pose_poselib(kpts0, kpts1, K0, K1, thresh, conf=0.99999):
     M, info = poselib.estimate_relative_pose(
@@ -164,6 +168,7 @@ def error_auc(errors, thresholds=[5, 10, 20]):
 
     return {f'auc@{t}': auc for t, auc in zip(thresholds, aucs)}
 
+
 def compute_maa(pairs, thresholds=[5, 10, 20]):
     print("auc / mAcc on %d pairs" % (len(pairs)))
     errors = []
@@ -186,7 +191,7 @@ def compute_maa(pairs, thresholds=[5, 10, 20]):
     
 
 @torch.inference_mode()
-def run_pose_benchmark(matcher_fn, loader, ransac_thr=2.5, trasformation=None):
+def run_pose_benchmark(matcher_fn, loader, top_k=4092, ransac_thr=2.5, trasformations=None, min_cossim=0.5, method="homography", threshold=90):
     """
         Run relative pose estimation benchmark using a specified matcher function and data loader.
 
@@ -209,7 +214,23 @@ def run_pose_benchmark(matcher_fn, loader, ransac_thr=2.5, trasformation=None):
     cnt = 0
     for d in tqdm.tqdm(loader):
         d_error = {}
-        src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1']), top_k=10000) #trasformations=trasformation, top_k=10000, eps=0.1, min_samples=5)
+
+        if matcher_fn.__name__ == 'match_xfeat_star_original' or matcher_fn.__name__ == 'match_xfeat_original':
+            src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1']), top_k=top_k) #trasformations=trasformation, top_k=10000, eps=0.1, min_samples=5)
+        elif matcher_fn.__name__ == 'match_alike':
+            src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1'])) 
+        elif matcher_fn.__name__ == 'match_xfeat_trasformed':
+            src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1']), top_k=top_k, trasformations=trasformations, min_cossim=min_cossim)
+        elif matcher_fn.__name__ == matcher_fn.__name__ == 'match_xfeat_star_trasformed':
+            src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1']), top_k=top_k, trasformations=trasformations)
+        elif matcher_fn.__name__ == 'match_xfeat_refined' or matcher_fn.__name__ == 'match_xfeat_star_refined':
+            src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1']), top_k=top_k, method=method, threshold=90)
+        elif matcher_fn.__name__ == 'match_xfeat_star_clustering':
+            src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1']), top_k=top_k, eps=0.1, min_samples=5)
+        else:
+            raise ValueError("Invalid matcher")
+
+        
         #delete images to avoid OOM, happens in low mem machines
         del d['image0']
         del d['image1']
@@ -224,26 +245,79 @@ def run_pose_benchmark(matcher_fn, loader, ransac_thr=2.5, trasformation=None):
     compute_maa(pairs)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run pose benchmark with matcher")
+    parser.add_argument('--dataset-dir', type=str, required=False,
+                        default='data/Mega1500',
+                        help="Path to MegaDepth dataset root")
+    parser.add_argument('--matcher', type=str, 
+                        choices=['xfeat', 'xfeat-star', 'alike', "xfeat-trasformed", "xfeat-star-trasformed", "xfeat-refined", "xfeat-star-refined", "xfeat-star-clustering" ], 
+                        default='xfeat',
+                        help="Matcher to use")
+    parser.add_argument('--ransac-thr', type=float, default=2.5,
+                        help="RANSAC threshold value in pixels (default: 2.5)")
+    parser.add_argument('--method', type=str, 
+                        choices=['homography', 'fundamental' ], 
+                        default='homography',
+                        help="Method for xfeat-refined and xfeat-star-refined (homography or fundamental)")
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
+
+    args = parse_args()
     
     dataset = MegaDepth1500( json_file = 'data/megadepth_1500.json',
-                             root_dir = 'data/Mega1500/megadepth_test_1500')
+                             root_dir = args.dataset_dir + '/megadepth_test_1500')
     
     loader = DataLoader(dataset, batch_size=1, shuffle=False)
 
     print("running benchmarck for XFeat trasformed")
 
-    from xfeat_wrapper import XFeatWrapper
-
     trasformation= [
-        # {
-        #     'type': "rotation",
-        #     'angle': 45,
-        #     'pixel': 0
-        # }
+        {
+            'type': "rotation",
+            'angle': 45,
+            'pixel': 0
+        },
+        {
+            'type': "rotation",
+            'angle': 90,
+            'pixel': 0
+        },
+        {
+            'type': "rotation",
+            'angle': 180,
+            'pixel': 0
+        }
     ]
 
+    modality = args.matcher
     xfeat = XFeatWrapper()
-    run_pose_benchmark(matcher_fn = xfeat.match_xfeat_star_original, loader = loader, ransac_thr = 2.5, trasformation=trasformation)
+
+    if modality == 'xfeat':
+        print("Running benchmark for XFeat..")
+        run_pose_benchmark(matcher_fn = xfeat.match_xfeat_original, top_k=4092, loader = loader, ransac_thr = args.ransac_thr)
+    elif modality == 'xfeat-star':
+        print("Running benchmark for XFeat*..")
+        run_pose_benchmark(matcher_fn = xfeat.match_xfeat_star_original, top_k=10000, loader = loader, ransac_thr = args.ransac_thr)
+    elif modality == 'alike':
+        print("Running benchmark for alike..")
+        run_pose_benchmark(matcher_fn = alike.match_alike, top_k=None, loader = loader, ransac_thr = args.ransac_thr)
+    elif modality == 'xfeat-trasformed':
+        print("Running benchmark for XFeat with homography trasformation..")
+        run_pose_benchmark(matcher_fn = xfeat.match_xfeat_trasformed, top_k=4092, loader = loader, ransac_thr = args.ransac_thr, trasformations=trasformation, min_cossim=0.5)   
+    elif modality == 'xfeat-star-trasformed':
+        print("Running benchmark for XFeat* with homography trasformation..")
+        run_pose_benchmark(matcher_fn = xfeat.match_xfeat_star_trasformed, top_k=10000, loader = loader, ransac_thr = args.ransac_thr, trasformations=trasformation, min_cossim=0.5)
+    elif modality == 'xfeat-refined':
+        print("Running benchmark for XFeat refined..")
+        run_pose_benchmark(matcher_fn = xfeat.match_xfeat_refined, top_k=4092, loader = loader, ransac_thr = args.ransac_thr, method=args.method)
+    elif modality == 'xfeat-star-refined':
+        print("Running benchmark for XFeat refined..")
+        run_pose_benchmark(matcher_fn = xfeat.match_xfeat_star_refined, top_k=10000, loader = loader, ransac_thr = args.ransac_thr, method=args.method)
+    elif modality == 'xfeat-star-clustering':
+        print("Running benchmark for XFeat clustering..")
+        run_pose_benchmark(matcher_fn = xfeat.match_xfeat_star_clustering, top_k=10000, loader = loader, ransac_thr = args.ransac_thr, method=args.method)
+    else:
+        print("Invalid matcher")
