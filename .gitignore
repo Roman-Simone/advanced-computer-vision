@@ -3,6 +3,8 @@ Mega1500
 ScanNet1500
 /tmp
 xfeat_wrapper_copy.py
+accelerated_features/third_party/ALIKE/__pycache__
+/Users/simoneroman/Desktop/advanced-computer-vision/accelerated_features/third_party/ALIKE/__pycache__
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
