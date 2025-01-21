@@ -1,8 +1,10 @@
 import os
 import cv2
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 from xfeat_wrapper import XFeatWrapper
+from accelerated_features.third_party import alike_wrapper as alike
 
 
 def visualize_comparisons(image1, image2, p1, p2, original_p1, original_p2):
@@ -100,27 +102,95 @@ def visualize_correspondences(image1, image2, p1, p2):
     plt.title("Point Correspondences")
     plt.show()
 
-if __name__ == "__main__":
-    xfeat_instance = XFeatWrapper()
+
+def get_points(matcher_fn, image1=None, image2=None, top_k=4092, trasformations=None, min_cossim=0.9, method='homography'):
     '''
-    Da salvare
-    path_image1 = "data/Mega1500/megadepth_test_1500/Undistorted_SfM/0015/images/62688623_17b5de833a_o.jpg"
-    path_image2 = "data/Mega1500/megadepth_test_1500/Undistorted_SfM/0015/images/62688997_a0cdebb0d1_o.jpg"
-
-    path_image1 = "data/Mega1500/megadepth_test_1500/Undistorted_SfM/0015/images/2429046426_eddd69687b_o.jpg"
-    path_image2 :
-
-    data/Mega1500/megadepth_test_1500/Undistorted_SfM/0015/images/215038972_b717b9113b_o.jpg
-
+    Get the points from the matcher function
     '''
-    path_image1 = "data/Mega1500/megadepth_test_1500/Undistorted_SfM/0015/images/2429046426_eddd69687b_o.jpg"
-    #path_image2 = "data/Mega1500/megadepth_test_1500/Undistorted_SfM/0015/images/2431823248_3776ed43ec_o.jpg"
-    #path_image2 = "data/Mega1500/megadepth_test_1500/Undistorted_SfM/0015/images/3968509319_096d953be0_o.jpg"
-
-
-    image1 = cv2.imread(path_image1)
+    if matcher_fn.__name__ == 'match_xfeat_star_original' or matcher_fn.__name__ == 'match_xfeat_original':
+        src_pts, dst_pts = matcher_fn(image1, image2, top_k=top_k) 
+    elif matcher_fn.__name__ == 'match_alike':
+        src_pts, dst_pts = matcher_fn(image1, image2) 
+    elif matcher_fn.__name__ == 'match_xfeat_trasformed':
+        src_pts, dst_pts = matcher_fn(image1, image2, top_k=top_k, trasformations=trasformations, min_cossim=min_cossim)
+    elif matcher_fn.__name__ == matcher_fn.__name__ == 'match_xfeat_star_trasformed':
+        src_pts, dst_pts = matcher_fn(image1, image2, top_k=top_k, trasformations=trasformations)
+    elif matcher_fn.__name__ == 'match_xfeat_refined' or matcher_fn.__name__ == 'match_xfeat_star_refined':
+        src_pts, dst_pts = matcher_fn(image1, image2, top_k=top_k, method=method, threshold=90)
+    elif matcher_fn.__name__ == 'match_xfeat_star_clustering':
+        src_pts, dst_pts = matcher_fn(image1, image2, top_k=top_k, eps=0.1, min_samples=5)
+    else:
+        raise ValueError("Invalid matcher")
     
+    return src_pts, dst_pts
 
+
+def call_matcher(modality, args, xfeat_instance, image1, image2, trasformation=None):
+    '''
+    Call the matcher function based on the modality
+    '''
+
+    if modality == 'xfeat':
+        print("Running benchmark for XFeat..")
+        return get_points(matcher_fn = xfeat_instance.match_xfeat_original, image1=image1, image2=image2, top_k=4092)
+    elif modality == 'xfeat-star':
+        print("Running benchmark for XFeat*..")
+        return get_points(matcher_fn = xfeat_instance.match_xfeat_star_original, image1=image1, image2=image2,  top_k=10000)
+    elif modality == 'alike':
+        print("Running benchmark for alike..")
+        return get_points(matcher_fn = alike.match_alike, top_k=None)
+    elif modality == 'xfeat-trasformed':
+        print("Running benchmark for XFeat with homography trasformation..")
+        return get_points(matcher_fn = xfeat_instance.match_xfeat_trasformed, image1=image1, image2=image2, top_k=4092, trasformations=trasformation, min_cossim=0.5)   
+    elif modality == 'xfeat-star-trasformed':
+        print("Running benchmark for XFeat* with homography trasformation..")
+        return get_points(matcher_fn = xfeat_instance.match_xfeat_star_trasformed, image1=image1, image2=image2, top_k=10000, trasformations=trasformation, min_cossim=0.5)
+    elif modality == 'xfeat-refined':
+        print("Running benchmark for XFeat refined..")
+        return get_points(matcher_fn = xfeat_instance.match_xfeat_refined, image1=image1, image2=image2, top_k=4092, method=args.method)
+    elif modality == 'xfeat-star-refined':
+        print("Running benchmark for XFeat refined..")
+        return get_points(matcher_fn = xfeat_instance.match_xfeat_star_refined, image1=image1, image2=image2, top_k=10000, method=args.method)
+    elif modality == 'xfeat-star-clustering':
+        print("Running benchmark for XFeat clustering..")
+        return get_points(matcher_fn = xfeat_instance.match_xfeat_star_clustering, image1=image1, image2=image2, top_k=10000, method=args.method)
+    else:
+        print("Invalid matcher")
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run pose benchmark with matcher")
+    parser.add_argument('--dataset-dir', type=str, required=False,
+                        default='data/Mega1500/megadepth_test_1500/Undistorted_SfM/0015/images',
+                        help="Path to MegaDepth dataset root")
+    parser.add_argument('--matcher-1', type=str, 
+                        choices=['xfeat', 'xfeat-star', 'alike', "xfeat-trasformed", "xfeat-star-trasformed", "xfeat-refined", "xfeat-star-refined", "xfeat-star-clustering" ], 
+                        default='xfeat-star',
+                        help="Matcher 1 to use")
+    parser.add_argument('--matcher-2', type=str, 
+                        choices=['xfeat', 'xfeat-star', 'alike', "xfeat-trasformed", "xfeat-star-trasformed", "xfeat-refined", "xfeat-star-refined", "xfeat-star-clustering" ], 
+                        default='xfeat',
+                        help="Matcher 1 to use")
+    parser.add_argument('--ransac-thr', type=float, default=2.5,
+                        help="RANSAC threshold value in pixels (default: 2.5)")
+    parser.add_argument('--method', type=str, 
+                        choices=['homography', 'fundamental' ], 
+                        default='homography',
+                        help="Method for xfeat-refined and xfeat-star-refined (homography or fundamental)")
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+
+    args = parse_args()
+
+    PATH = args.dataset_dir
+    PATH_IMAGE1 = f"{PATH}/2429046426_eddd69687b_o.jpg"
+
+    xfeat_instance = XFeatWrapper()
+
+    image1 = cv2.imread(PATH_IMAGE1)
+    
     trasformation= [
         {
             'type': "rotation",
@@ -138,28 +208,16 @@ if __name__ == "__main__":
             'pixel': 0
         }
     ]
-    path = "data/Mega1500/megadepth_test_1500/Undistorted_SfM/0015/images"
 
-    for root, dirs, files in os.walk(path):
+    for root, dirs, files in os.walk(PATH):
         for name in dirs + files:
             path_image2 = os.path.join(root, name)
             print(path_image2)
-            image2 = cv2.imread(path_image2)
-            #p1, p2 = xfeat_instance.inference_xfeat_star_our_version(image1, image2, trasformation, top_k=4092)
-            p1, p2 = xfeat_instance.match_xfeat_star_clustering(image1, image2, eps = 0.01, min_samples = 5)
-            p1o, p2o = xfeat_instance.match_xfeat_star_original(image1, image2)
-            
-            
-            
-            # p1o, p2o = xfeat_instance.match_xfeat_star_original(image1, image2)
-            
-            print(len(p1), len(p1o))
-            # p1o, p2o = xfeat_instance.inference_xfeat_star_original(image1, image2)
-            visualize_comparisons(image1, image2, p1, p2, p1o, p2o)
 
-            p1 , p2 = [], []
-            p1o, p2o = xfeat_instance.match_xfeat_original(image1, image2)
-            print(len(p1), len(p1o))
+            image2 = cv2.imread(path_image2)
+            p1, p2 = call_matcher(args.matcher_1, args, xfeat_instance, image1, image2, trasformation=trasformation)
+            print("Number of points finds-> ", len(p1))
+            p1o, p2o = call_matcher(args.matcher_2, args, xfeat_instance, image1, image2, trasformation=trasformation)
+            print("Number of points finds-> ", len(p1o))
+            
             visualize_comparisons(image1, image2, p1, p2, p1o, p2o)
-            print()
-            #visualize_correspondences(image1, image2, p1, p2)

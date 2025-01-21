@@ -5,7 +5,7 @@ import tqdm
 import torch
 import poselib
 import numpy as np
-import argparse, glob, sys, os, time
+import argparse, os
 from xfeat_wrapper import XFeatWrapper
 from torch.utils.data import Dataset, DataLoader
 from accelerated_features.third_party import alike_wrapper as alike
@@ -275,11 +275,11 @@ if __name__ == "__main__":
     print("running benchmarck for XFeat trasformed")
 
     trasformation= [
-        # {
-        #     'type': "rotation",
-        #     'angle': 45,
-        #     'pixel': 0
-        # },
+        {
+            'type': "rotation",
+            'angle': 45,
+            'pixel': 0
+        },
         {
             'type': "rotation",
             'angle': 90,
