@@ -80,7 +80,7 @@ This approach ensures that the semi-dense matching process is less affected by n
 
 
 ## Installation
-> [!NOTE] INFO
+> [!NOTE]
 > For all project we use python 3.8
 
 In order to install all the dependencies go in the directory setup and launch this command:
@@ -108,7 +108,7 @@ To replicate the experiment for dataset megadepth_1500 launch:
 python3 eval_megadepth.py --matcher ...
 ```
 
-> [!NOTE] INFO
+> [!NOTE]
 > The possible choice for matcher are: xfeat, xfeat-star, alike, xfeat-trasformed, xfeat-star-trasformed, xfeat-refined, xfeat-star-refined, xfeat-star-clustering
 
 # Contact
