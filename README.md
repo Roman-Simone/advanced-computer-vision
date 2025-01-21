@@ -80,7 +80,50 @@ This approach ensures that the semi-dense matching process is less affected by n
 
 
 ## Installation
+> [!NOTE] INFO
+> For all project we use python 3.8
+
+In order to install all the dependencies go in the directory setup and launch this command:
+```bash
+cd setup
+sh setup_conda.sh # if you want to use conda environment
+sh setup_venv.sh # if you want to use virtual environment
+```
+### Download dataset
+Run the following commands inside the directory setup:
+```bash
+cd setup
+sh download_dataset.sh
+```
 
 ## Running the project
 
+In order to see the qualitative results of project launch:
+```bash
+python3 qualitative.py --matcher-1 ... --matcher-2 ...
+```
+
+To replicate the experiment for dataset megadepth_1500 launch:
+```bash
+python3 eval_megadepth.py --matcher ...
+```
+
+> [!NOTE] INFO
+> The possible choice for matcher are: xfeat, xfeat-star, alike, xfeat-trasformed, xfeat-star-trasformed, xfeat-refined, xfeat-star-refined, xfeat-star-clustering
+
 # Contact
+For any inquiries, feel free to contact:
+
+- Simone Roman - [simone.roman@studenti.unitn.it](mailto:simone.roman@studenti.unitn.it)
+
+- Christian Moiola - [christian.moiola@studenti.unitn.it](mailto:christian.moiola@studenti.unitn.it)
+
+
+
+<br>
+
+<div>
+    <a href="https://www.unitn.it/">
+        <img src="https://ing-gest.disi.unitn.it/wp-content/uploads/2022/11/marchio_disi_bianco_vert_eng-1024x295.png" width="400px">
+    </a>
+</div>
