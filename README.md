@@ -102,8 +102,12 @@ In order to see the qualitative results of project launch:
 ```bash
 python3 qualitative.py --matcher-1 ... --matcher-2 ...
 ```
+To launch demo with webcam launch:
+```bash
+python3 realtime_demo.py --matcher ...
+```
 
-To replicate the experiment for dataset megadepth_1500 launch:
+To replicate the experiment for dataset **megadepth_1500** launch:
 ```bash
 python3 eval_megadepth.py --matcher ...
 ```
