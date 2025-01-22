@@ -1,13 +1,11 @@
-
 import cv2
-import numpy as np
-import torch
-
-from time import time, sleep
-import argparse, sys, tqdm
+import argparse
 import threading
-
+import numpy as np
+from time import time, sleep
 from xfeat_wrapper import XFeatWrapper
+from accelerated_features.third_party import alike_wrapper as alike
+
 
 def argparser():
     parser = argparse.ArgumentParser(description="Configurations for the real-time matching demo.")
