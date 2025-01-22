@@ -108,7 +108,6 @@ class FrameGrabber(threading.Thread):
     def get_last_frame(self):
         return self.frame
 
-
 class MatchingDemo:
     def __init__(self, args):
         self.args = args
@@ -322,6 +321,7 @@ class MatchingDemo:
         self.frame_grabber.stop()
         self.cap.release()
         cv2.destroyAllWindows()
+
 
 if __name__ == "__main__":
     demo = MatchingDemo(args = argparser())
