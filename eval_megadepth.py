@@ -220,9 +220,9 @@ def run_pose_benchmark(matcher_fn, loader, top_k=4092, ransac_thr=2.5, trasforma
         elif matcher_fn.__name__ == 'match_alike':
             src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1'])) 
         elif matcher_fn.__name__ == 'match_xfeat_trasformed':
-            src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1']), top_k=top_k, trasformations=trasformations, min_cossim=min_cossim)
+            src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1']), top_k=top_k, trasformations=trasformations, min_cossim=min_cossim, merge=True)
         elif matcher_fn.__name__ == matcher_fn.__name__ == 'match_xfeat_star_trasformed':
-            src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1']), top_k=top_k, trasformations=trasformations)
+            src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1']), top_k=top_k, trasformations=trasformations, merge=True)
         elif matcher_fn.__name__ == 'match_xfeat_refined' or matcher_fn.__name__ == 'match_xfeat_star_refined':
             src_pts, dst_pts = matcher_fn(tensor2bgr(d['image0']), tensor2bgr(d['image1']), top_k=top_k, method=method, threshold=90)
         elif matcher_fn.__name__ == 'match_xfeat_star_clustering':
@@ -284,12 +284,12 @@ if __name__ == "__main__":
             'type': "rotation",
             'angle': 90,
             'pixel': 0
-        },
-        {
-            'type': "rotation",
-            'angle': 180,
-            'pixel': 0
         }
+        # {
+        #     'type': "rotation",
+        #     'angle': 180,
+        #     'pixel': 0
+        # }
     ]
 
     modality = args.matcher
